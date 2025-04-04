@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model address {
+  id          String   @id @default(uuid()) @db.Char(36)
+  addressLine1 String  @db.VarChar(200)
+  addressLine2 String? @db.VarChar(200)
+  landmark    String?  @db.VarChar(100)
+  city        String   @db.VarChar(50)
+  state       String   @db.VarChar(50)
+  country     String   @db.VarChar(50)
+  postalCode  String   @db.VarChar(20)
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  entityId    String   @db.Char(36)
+  entityType  String   @db.VarChar(10) // 'USER' or 'LAB'
+  user        users?   @relation("UserAddress", fields: [entityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "address_user_fkey")
+  lab         labs?    @relation("LabAddress", fields: [entityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "address_lab_fkey")
+
+  @@index([entityId])
+  @@map("address")
+}
+
+model users {
+  id          String   @id @default(uuid()) @db.Char(36)
+  name        String   @db.VarChar(100)
+  email       String   @unique @db.VarChar(100)
+  password    String   @db.VarChar(100)
+  userType    Int      @default(4)
+  isDeleted   Boolean  @default(false)
+  isEmailVerified Boolean @default(false)
+  emailVerificationToken String? @db.VarChar(100)
+  emailVerificationTokenExpiry DateTime?
+  resetToken  String?  @db.VarChar(100)
+  resetTokenExpiry DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?  @db.Char(36)
+  managedBy   String?  @db.Char(36)
+  addresses   address[] @relation("UserAddress")
+  createdUsers users[] @relation("CreatedUsers")
+  managedUsers users[] @relation("ManagedUsers")
+  createdByUser users? @relation("CreatedUsers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  managedByUser users? @relation("ManagedUsers", fields: [managedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  managedLabs LabManagers[] @relation("UserLabs")
+
+  @@index([createdBy])
+  @@index([managedBy])
+  @@map("users")
+}
+
+model labs {
+  id          String   @id @default(uuid()) @db.Char(36)
+  name        String   @db.VarChar(100)
+  phoneNumber String   @db.VarChar(20)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  addresses   address[] @relation("LabAddress")
+  managers    LabManagers[] @relation("LabManagers")
+
+  @@map("labs")
+}
+
+model LabManagers {
+  id        String  @id @default(uuid()) @db.Char(36)
+  userId    String  @db.Char(36)
+  labId     String  @db.Char(36)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      users   @relation("UserLabs", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lab       labs    @relation("LabManagers", fields: [labId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([labId])
+  @@unique([userId, labId])
+  @@map("lab_managers")
+}
+
+

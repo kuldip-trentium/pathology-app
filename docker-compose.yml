@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: nest_app
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: mysql://root:@host.docker.internal:3306/pathology_management
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run start:prod"]
