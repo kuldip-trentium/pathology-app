@@ -1,4 +1,10 @@
-import { Injectable, UnauthorizedException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
@@ -38,7 +44,7 @@ export class AuthService {
     private configService: ConfigService,
     private mailerService: MailerService,
     private openCageService: OpenCageService,
-  ) { }
+  ) {}
 
   private validateAddressFields(address: Partial<AddressFields>) {
     const requiredFields: Record<keyof RequiredAddressFields, string> = {
@@ -48,7 +54,7 @@ export class AuthService {
       city: 'City is required',
       state: 'State is required',
       country: 'Country is required',
-      postalCode: 'Postal code is required'
+      postalCode: 'Postal code is required',
     };
 
     const missingFields: string[] = [];
@@ -61,7 +67,7 @@ export class AuthService {
     if (missingFields.length > 0) {
       throw new BadRequestException({
         message: 'Address validation failed',
-        errors: missingFields
+        errors: missingFields,
       });
     }
   }
@@ -71,7 +77,7 @@ export class AuthService {
 
     // Check if user already exists
     const existingUser = await this.prisma.users.findUnique({
-      where: { email: userData.email }
+      where: { email: userData.email },
     });
 
     if (existingUser) {
@@ -90,35 +96,50 @@ export class AuthService {
 
     // Hash password
     const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     // Create user data with defaults
     const userDataWithDefaults = {
       ...userData,
       password: hashedPassword,
       isEmailVerified: false,
-      isDeleted: false
+      isDeleted: false,
+      emailVerificationToken: verificationToken,
+      emailVerificationTokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
     };
 
     // For non-client users, check if they already have an address
     if (userData.userType !== UserType.CLIENT && address) {
       const existingAddress = await this.prisma.address.findFirst({
         where: {
-          entityType: 'USER'
-        }
+          entityType: 'USER',
+        },
       });
 
       if (existingAddress) {
-        throw new BadRequestException('Non-client users can only have one address');
+        throw new BadRequestException(
+          'Non-client users can only have one address',
+        );
       }
     }
 
     // Create user first
     const user = await this.prisma.users.create({
-      data: userDataWithDefaults
+      data: userDataWithDefaults,
     });
 
     if (!user) {
       throw new BadRequestException('Failed to create user');
+    } else {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Verify Your Email',
+        template: 'verification-email',
+        context: {
+          name: user.name,
+          verificationUrl: `${this.configService.get('FRONTEND_URL')}/verify-email?token=${verificationToken}`,
+        },
+      });
     }
 
     // Create address if provided
@@ -126,7 +147,7 @@ export class AuthService {
       // If coordinates are not provided, geocode the address
       if (!address.latitude || !address.longitude) {
         const geocoded = await this.openCageService.geocodeAddress(
-          `${address.addressLine1}, ${address.city}, ${address.state}, ${address.country}`
+          `${address.addressLine1}, ${address.city}, ${address.state}, ${address.country}`,
         );
         address.latitude = geocoded.location.lat;
         address.longitude = geocoded.location.lng;
@@ -144,15 +165,15 @@ export class AuthService {
           latitude: address.latitude || 0,
           longitude: address.longitude || 0,
           entityType: 'USER',
-          entityId: user.id
-        }
+          entityId: user.id,
+        },
       });
     }
 
     // Fetch user with address
     const userWithAddress = await this.prisma.users.findUnique({
       where: { id: user.id },
-      include: { addresses: true }
+      include: { addresses: true },
     });
 
     if (!userWithAddress) {
@@ -166,7 +187,7 @@ export class AuthService {
       name: userWithAddress.name,
       email: userWithAddress.email,
       userType: userWithAddress.userType,
-      address: userWithAddress.addresses[0]
+      address: userWithAddress.addresses[0],
     };
   }
 
@@ -185,7 +206,9 @@ export class AuthService {
     });
 
     if (!user) {
-      this.logger.warn(`Login attempt failed: User not found for email ${email}`);
+      this.logger.warn(
+        `Login attempt failed: User not found for email ${email}`,
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -195,13 +218,17 @@ export class AuthService {
     }
 
     if (!user.isEmailVerified) {
-      this.logger.warn(`Login attempt failed: User ${user.id} email not verified`);
+      this.logger.warn(
+        `Login attempt failed: User ${user.id} email not verified`,
+      );
       throw new UnauthorizedException('Please verify your email first');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      this.logger.warn(`Login attempt failed: Invalid password for user ${user.id}`);
+      this.logger.warn(
+        `Login attempt failed: Invalid password for user ${user.id}`,
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -238,16 +265,25 @@ export class AuthService {
       }
 
       if (creator.userType === UserType.MANAGER) {
-        if (createUserDto.userType !== UserType.STAFF && createUserDto.userType !== UserType.CLIENT) {
-          throw new UnauthorizedException('Manager can only create STAFF or CLIENT users');
+        if (
+          createUserDto.userType !== UserType.STAFF &&
+          createUserDto.userType !== UserType.CLIENT
+        ) {
+          throw new UnauthorizedException(
+            'Manager can only create STAFF or CLIENT users',
+          );
         }
       }
 
       if (creator.userType === UserType.ADMIN) {
-        if (createUserDto.userType !== UserType.MANAGER &&
+        if (
+          createUserDto.userType !== UserType.MANAGER &&
           createUserDto.userType !== UserType.STAFF &&
-          createUserDto.userType !== UserType.CLIENT) {
-          throw new UnauthorizedException('Admin can only create MANAGER, STAFF, or CLIENT users');
+          createUserDto.userType !== UserType.CLIENT
+        ) {
+          throw new UnauthorizedException(
+            'Admin can only create MANAGER, STAFF, or CLIENT users',
+          );
         }
       }
     }
@@ -261,13 +297,18 @@ export class AuthService {
         password: hashedPassword,
         userType: createUserDto.userType,
         createdBy: creatorId || null,
-        managedBy: creatorId ? (await this.prisma.users.findUnique({ where: { id: creatorId } }))?.userType === UserType.MANAGER ? creatorId : null : null,
+        managedBy: creatorId
+          ? (await this.prisma.users.findUnique({ where: { id: creatorId } }))
+              ?.userType === UserType.MANAGER
+            ? creatorId
+            : null
+          : null,
       },
     });
 
     return {
       message: 'User created successfully',
-      userId: user.id
+      userId: user.id,
     };
   }
 
@@ -413,7 +454,10 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const isPasswordValid = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      user.password,
+    );
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
