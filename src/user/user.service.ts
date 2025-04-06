@@ -130,7 +130,7 @@ export class UserService {
       });
 
       // Send password email
-      await this.mailerService.sendMail({
+      this.mailerService.sendMail({
         to: user.email,
         subject: 'Your Account Credentials',
         template: 'password-email',
@@ -143,7 +143,7 @@ export class UserService {
       });
 
       // Send verification email
-      await this.mailerService.sendMail({
+      this.mailerService.sendMail({
         to: user.email,
         subject: 'Verify Your Email',
         template: 'verification-email',
@@ -458,6 +458,19 @@ export class UserService {
         name: true,
         email: true,
         userType: true,
+        addresses: {
+          select: {
+            addressLine1: true,
+            addressLine2: true,
+            landmark: true,
+            city: true,
+            state: true,
+            country: true,
+            postalCode: true,
+            latitude: true,
+            longitude: true,
+          },
+        },
         managedUsers: {
           where: {
             userType: UserType.STAFF,
@@ -469,11 +482,25 @@ export class UserService {
             email: true,
             userType: true,
             createdAt: true,
+            addresses: {
+              select: {
+                addressLine1: true,
+                addressLine2: true,
+                landmark: true,
+                city: true,
+                state: true,
+                country: true,
+                postalCode: true,
+                latitude: true,
+                longitude: true,
+              },
+            },
           },
         },
       },
     });
   }
+
   async getStaffByManager(managerId: string) {
     return this.prisma.users.findMany({
       where: {
@@ -487,9 +514,23 @@ export class UserService {
         email: true,
         userType: true,
         createdAt: true,
+        addresses: {
+          select: {
+            addressLine1: true,
+            addressLine2: true,
+            landmark: true,
+            city: true,
+            state: true,
+            country: true,
+            postalCode: true,
+            latitude: true,
+            longitude: true,
+          },
+        },
       },
     });
   }
+
   async findOneByAccessControl(
     userId: string,
     currentUserId: string,
@@ -589,6 +630,20 @@ export class UserService {
     return await this.prisma.users.update({
       where: { id: userId },
       data: { isDeleted: true, updatedAt: new Date() },
+    });
+  }
+  async findById(id: string) {
+    return this.prisma.users.findUnique({ where: { id } });
+  }
+  async saveVerificationToken(userId: string, token: string): Promise<void> {
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: {
+        emailVerificationToken: token,
+        emailVerificationTokenExpiry: new Date(
+          Date.now() + 1000 * 60 * 60 * 24,
+        ), // optional: expire in 24 hours
+      },
     });
   }
 }

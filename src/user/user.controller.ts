@@ -21,21 +21,25 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { UserService } from './user.service';
-import { AuthRequest, Role } from 'src/types/auth-request';
-import { JwtStrategy } from 'src/auth/strategies/jwt.strategy';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles, UserType } from 'src/auth/decorators/roles.decorator';
 import { RoleGuard } from 'src/auth/guards/role.guard';
-import { AuthGuard } from '@nestjs/passport';
+import * as crypto from 'crypto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { MailerService } from '@nestjs-modules/mailer';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RoleGuard)
 export class UserController {
   private readonly logger = new Logger(UserController.name);
 
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -141,16 +145,82 @@ export class UserController {
       this.logger.debug(
         `Updating user ${id} with data: ${JSON.stringify(updateData)}`,
       );
+
+      const currentUser = req.user;
+      const existingUser = await this.userService.findById(id);
+
+      if (!existingUser) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      // Role-based access check
+      if (currentUser.userType === UserType.ADMIN) {
+        if (existingUser.userType !== UserType.MANAGER) {
+          throw new ForbiddenException('Admin can only update MANAGER users');
+        }
+      }
+
+      if (currentUser.userType === UserType.MANAGER) {
+        if (existingUser.userType !== UserType.STAFF) {
+          throw new ForbiddenException('Manager can only update STAFF users');
+        }
+
+        if (existingUser.managedBy !== currentUser.id) {
+          throw new ForbiddenException(
+            'You are not authorized to update this staff member',
+          );
+        }
+      }
+
       const updatedUser = await this.userService.updateUserByRole(
         id,
         updateData,
-        req.user,
+        currentUser,
       );
+
       if (!updatedUser) {
         throw new NotFoundException(
           `User with ID ${id} not found or access denied`,
         );
       }
+
+      const emailChanged =
+        updateData.email && updateData.email !== existingUser.email;
+      const passwordChanged =
+        updateData.password && updateData.password !== existingUser.password;
+
+      if (emailChanged || passwordChanged) {
+        const loginUrl = `${this.configService.get('FRONTEND_URL')}/login`;
+
+        await this.mailerService.sendMail({
+          to: updatedUser.email,
+          subject: 'Your Account Credentials',
+          template: 'password-email',
+          context: {
+            name: updatedUser.name,
+            email: updatedUser.email,
+            password: updateData.password,
+            loginUrl,
+          },
+        });
+
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        await this.userService.saveVerificationToken(
+          updatedUser.id,
+          verificationToken,
+        );
+
+        await this.mailerService.sendMail({
+          to: updatedUser.email,
+          subject: 'Verify Your Email',
+          template: 'verification-email',
+          context: {
+            name: updatedUser.name,
+            verificationUrl: `${this.configService.get('FRONTEND_URL')}/verify-email?token=${verificationToken}`,
+          },
+        });
+      }
+
       return updatedUser;
     } catch (error) {
       this.logger.error(`Error updating user: ${error.message}`, error.stack);
@@ -167,12 +237,40 @@ export class UserController {
   async remove(@Param('id') id: string, @Request() req) {
     try {
       this.logger.debug(`Deleting user with id: ${id}`);
-      const deleted = await this.userService.deleteUserByRole(id, req.user);
+
+      const currentUser = req.user;
+      const targetUser = await this.userService.findById(id);
+
+      if (!targetUser) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      // Role-based access control
+      if (currentUser.userType === UserType.ADMIN) {
+        if (targetUser.userType !== UserType.MANAGER) {
+          throw new ForbiddenException('Admin can only delete MANAGER users');
+        }
+      }
+
+      if (currentUser.userType === UserType.MANAGER) {
+        if (targetUser.userType !== UserType.STAFF) {
+          throw new ForbiddenException('Manager can only delete STAFF users');
+        }
+
+        if (targetUser.managedBy !== currentUser.id) {
+          throw new ForbiddenException(
+            'You are not authorized to delete this staff member',
+          );
+        }
+      }
+
+      const deleted = await this.userService.deleteUserByRole(id, currentUser);
       if (!deleted) {
         throw new NotFoundException(
           `User with ID ${id} not found or access denied`,
         );
       }
+
       return { message: 'User deleted successfully' };
     } catch (error) {
       this.logger.error(`Error deleting user: ${error.message}`, error.stack);
