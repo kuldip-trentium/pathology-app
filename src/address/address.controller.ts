@@ -40,7 +40,7 @@ export class AddressController {
   constructor(
     private readonly addressService: AddressService,
     private readonly openCageService: OpenCageService,
-  ) {}
+  ) { }
 
   @Post()
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
@@ -50,7 +50,9 @@ export class AddressController {
   ) {
     try {
       const userId = req.user.sub;
-      return await this.addressService.create(createAddressDto, userId, 'USER');
+      const userType = req.user.userType;
+
+      return await this.addressService.create(createAddressDto, userId, "USER", userType);
     } catch (error) {
       this.logger.error(`Create address error: ${error.message}`, error.stack);
       if (error instanceof HttpException) {

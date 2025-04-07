@@ -24,12 +24,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RegisterDto } from './dto/register.dto';
 import { Roles } from './roles.decorator';
 import { UserType } from './decorators/roles.decorator';
+import { ResendVerificationDto } from './dto/resend-verification-dto';
 
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('login')
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
@@ -70,32 +71,6 @@ export class AuthController {
     }
   }
 
-  @Post('create-user')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserType.ADMIN, UserType.MANAGER)
-  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-  async createUser(@Req() req, @Body() createUserDto: RegisterDto) {
-    try {
-      if (
-        !createUserDto.email ||
-        !createUserDto.password ||
-        !createUserDto.name
-      ) {
-        throw new BadRequestException('Name, email and password are required');
-      }
-      return await this.authService.createUser(createUserDto, req.user.sub);
-    } catch (error) {
-      this.logger.error(`Create user error: ${error.message}`, error.stack);
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new HttpException(
-        'Failed to create user',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
   @Post('verify-email')
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
@@ -120,12 +95,12 @@ export class AuthController {
   }
 
   @Post('resend-verification')
-  async resendVerificationEmail(@Body('email') email: string) {
+  async resendVerificationEmail(@Body() resendVerificationDto: ResendVerificationDto) {
     try {
-      if (!email) {
+      if (!resendVerificationDto.email) {
         throw new BadRequestException('Email is required');
       }
-      return await this.authService.resendVerificationEmail(email);
+      return await this.authService.resendVerificationEmail(resendVerificationDto.email);
     } catch (error) {
       this.logger.error(
         `Resend verification error: ${error.message}`,

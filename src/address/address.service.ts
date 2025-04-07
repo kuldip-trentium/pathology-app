@@ -11,9 +11,9 @@ export class AddressService {
         private openCageService: OpenCageService,
     ) { }
 
-    async create(createAddressDto: CreateAddressDto, entityId: string, entityType: string) {
+    async create(createAddressDto: CreateAddressDto, entityId: string, entityType: string, userType: number) {
         // For non-client users and labs, check if they already have an address
-        if (entityType !== 'USER') {
+        if (entityType === 'USER' && userType !== 4) {
             const existingAddress = await this.prisma.address.findFirst({
                 where: {
                     entityId,

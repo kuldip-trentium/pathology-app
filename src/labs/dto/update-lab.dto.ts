@@ -1,4 +1,4 @@
-import { IsString, IsOptional, ValidateNested } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateAddressDto } from '../../address/dto/create-address.dto';
 
@@ -15,4 +15,9 @@ export class UpdateLabDto {
     @ValidateNested()
     @Type(() => CreateAddressDto)
     address?: CreateAddressDto;
+
+    @IsArray()
+    @IsOptional()
+    @IsString({ each: true })
+    managerIds?: string[];
 } 

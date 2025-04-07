@@ -7,6 +7,8 @@ import { ConfigModule } from '@nestjs/config';
 import { LabsModule } from './labs/labs.module';
 import { UserModule } from './user/user.module';
 import { AddressModule } from './address/address.module';
+import { TestCatalogModule } from './test-catalog/test-catalog.module';
+import { LabTestsModule } from './lab-tests/lab-tests.module';
 
 @Module({
   imports: [
@@ -17,7 +19,9 @@ import { AddressModule } from './address/address.module';
     PrismaModule,
     LabsModule,
     UserModule,
-    AddressModule
+    AddressModule,
+    TestCatalogModule,
+    LabTestsModule
   ],
   controllers: [AppController],
   providers: [AppService],

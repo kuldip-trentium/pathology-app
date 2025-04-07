@@ -8,6 +8,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { join } from 'path';
+import { OpenCageService } from 'src/address/open-cage.service';
 
 @Module({
   imports: [
@@ -49,7 +50,7 @@ import { join } from 'path';
     }),
   ],
   controllers: [UserController],
-  providers: [UserService],
+  providers: [UserService, OpenCageService],
   exports: [UserService],
 })
-export class UserModule {}
+export class UserModule { }

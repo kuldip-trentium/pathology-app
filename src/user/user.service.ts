@@ -13,8 +13,8 @@ import { UserType } from '../auth/decorators/roles.decorator';
 import * as bcrypt from 'bcrypt';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
+import { OpenCageService } from 'src/address/open-cage.service';
 
 interface CurrentUser {
   id: string;
@@ -29,66 +29,56 @@ export class UserService {
     private prisma: PrismaService,
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
-    private readonly jwtService: JwtService,
-  ) {}
+    private openCageService: OpenCageService,
+  ) { }
 
   async create(createUserDto: CreateUserDto, currentUser: CurrentUser) {
     try {
       this.logger.debug(`Creating user with email: ${createUserDto.email}`);
 
-      const { password, labId, address, ...userData } = createUserDto;
+      const { password, labIds, address, ...userData } = createUserDto;
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Validate role-based permissions
+      if (createUserDto.userType === UserType.STAFF && currentUser.userType === UserType.ADMIN) {
+        throw new ConflictException('An Admin cannot create Staff.');
+      }
+
       this.validateUserCreation(currentUser, userData.userType);
 
-      // Check if user with same email exists
       const existingUser = await this.prisma.users.findFirst({
         where: { email: userData.email, isDeleted: false },
       });
 
       if (existingUser) {
-        throw new ConflictException(
-          'A user with this email already exists. Please use a different email address.',
-        );
+        throw new ConflictException('A user with this email already exists. Please use a different email address.');
       }
 
-      // Check if lab exists if labId is provided
-      if (labId) {
-        const lab = await this.prisma.labs.findUnique({
-          where: { id: labId },
+      // Validate labs if labIds are provided
+      if (labIds?.length) {
+        const labs = await this.prisma.labs.findMany({
+          where: { id: { in: labIds } },
         });
 
-        if (!lab) {
-          throw new NotFoundException(
-            `The lab with ID ${labId} does not exist. Please provide a valid lab ID.`,
-          );
+        if (labs.length !== labIds.length) {
+          throw new NotFoundException('One or more labs do not exist.');
         }
 
-        // Only managers can be assigned to labs
         if (userData.userType !== UserType.MANAGER) {
-          throw new BadRequestException(
-            'Only users with manager role can be assigned to labs.',
-          );
+          throw new BadRequestException('Only users with manager role can be assigned to labs.');
         }
       }
 
       const verificationToken = crypto.randomBytes(32).toString('hex');
 
-      // Create user with transaction to handle both user and address creation
       const user = await this.prisma.$transaction(async (prisma) => {
-        // Create user with createdBy set to current user's ID
         const newUser = await prisma.users.create({
           data: {
             ...userData,
             password: hashedPassword,
-            createdBy: currentUser.id, // Set createdBy to current user's ID
-            managedBy:
-              userData.userType === UserType.STAFF ? currentUser.id : null,
+            createdBy: currentUser.id,
+            managedBy: userData.userType === UserType.STAFF ? currentUser.id : null,
             emailVerificationToken: verificationToken,
-            emailVerificationTokenExpiry: new Date(
-              Date.now() + 24 * 60 * 60 * 1000,
-            ),
+            emailVerificationTokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
           },
           select: {
             id: true,
@@ -102,19 +92,31 @@ export class UserService {
           },
         });
 
-        // If labId is provided, create lab manager relationship
-        if (labId) {
-          await prisma.labManagers.create({
-            data: {
-              labId: labId,
-              userId: newUser.id,
-            },
+        // Create lab-manager mappings
+        if (labIds?.length) {
+          const mappings = labIds.map((labId) => ({
+            labId,
+            userId: newUser.id,
+          }));
+
+          await prisma.labManagers.createMany({
+            data: mappings,
+            skipDuplicates: true,
           });
         }
 
-        // If address is provided, create address
+        // Create address
+        let savedAddress: any = null;
         if (address) {
-          await prisma.address.create({
+          if (!address.latitude || !address.longitude) {
+            const geocoded = await this.openCageService.geocodeAddress(
+              `${address.addressLine1}, ${address.city}, ${address.state}, ${address.country}`,
+            );
+            address.latitude = geocoded.location.lat;
+            address.longitude = geocoded.location.lng;
+          }
+
+          savedAddress = await prisma.address.create({
             data: {
               ...address,
               entityId: newUser.id,
@@ -126,11 +128,11 @@ export class UserService {
           });
         }
 
-        return newUser;
+        return { ...newUser, address: savedAddress };
       });
 
-      // Send password email
-      this.mailerService.sendMail({
+      // Send credentials and verification emails
+      await this.mailerService.sendMail({
         to: user.email,
         subject: 'Your Account Credentials',
         template: 'password-email',
@@ -142,8 +144,7 @@ export class UserService {
         },
       });
 
-      // Send verification email
-      this.mailerService.sendMail({
+      await this.mailerService.sendMail({
         to: user.email,
         subject: 'Verify Your Email',
         template: 'verification-email',
@@ -164,11 +165,10 @@ export class UserService {
       ) {
         throw error;
       }
-      throw new BadRequestException(
-        'An unexpected error occurred while creating the user. Please try again later.',
-      );
+      throw new BadRequestException('An unexpected error occurred while creating the user. Please try again later.');
     }
   }
+
 
   private validateUserCreation(
     currentUser: CurrentUser,
@@ -580,33 +580,118 @@ export class UserService {
 
     const userToUpdate = await this.prisma.users.findUnique({
       where: { id: userId },
+      include: {
+        addresses: true,
+      },
     });
     if (!userToUpdate) return null;
 
+    // Role-based validation
     if (
-      (userType === UserType.ADMIN &&
-        userToUpdate.userType !== UserType.MANAGER) ||
+      (userType === UserType.ADMIN && userToUpdate.userType !== UserType.MANAGER) ||
       (userType === UserType.MANAGER &&
-        userToUpdate.userType !== UserType.STAFF &&
-        userToUpdate.managedBy !== currentUserId)
+        (userToUpdate.userType !== UserType.STAFF || userToUpdate.managedBy !== currentUserId))
     ) {
-      return null; // Not allowed
+      return null;
     }
 
-    return await this.prisma.users.update({
-      where: { id: userId },
-      data: {
-        ...updateData,
-        updatedAt: new Date(),
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        userType: true,
-      },
+    const { address, labIds, ...userFields } = updateData;
+
+    // Validate labIds if provided
+    if (labIds && Array.isArray(labIds) && labIds.length > 0) {
+      const foundLabs = await this.prisma.labs.findMany({
+        where: { id: { in: labIds } },
+      });
+
+      if (foundLabs.length !== labIds.length) {
+        throw new NotFoundException(`One or more lab IDs are invalid.`);
+      }
+
+      if (userToUpdate.userType !== UserType.MANAGER) {
+        throw new BadRequestException('Only managers can be assigned to labs.');
+      }
+    }
+
+    const updatedUser = await this.prisma.$transaction(async (prisma) => {
+      const user = await prisma.users.update({
+        where: { id: userId },
+        data: {
+          ...userFields,
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          userType: true,
+        },
+      });
+
+      // Handle lab manager mappings
+      if (labIds && Array.isArray(labIds)) {
+        // Delete old lab mappings
+        await prisma.labManagers.deleteMany({
+          where: { userId },
+        });
+
+        // Add new mappings
+        await prisma.labManagers.createMany({
+          data: labIds.map((labId: string) => ({
+            userId,
+            labId,
+          })),
+        });
+      }
+
+      // If address is provided
+      if (address) {
+        if (!address.latitude || !address.longitude) {
+          const geocoded = await this.openCageService.geocodeAddress(
+            `${address.addressLine1}, ${address.city}, ${address.state}, ${address.country}`,
+          );
+          address.latitude = geocoded.location.lat;
+          address.longitude = geocoded.location.lng;
+        }
+
+        const existingAddress = await prisma.address.findFirst({
+          where: {
+            entityId: userId,
+            entityType: 'USER',
+          },
+        });
+
+        if (existingAddress) {
+          await prisma.address.update({
+            where: { id: existingAddress.id },
+            data: {
+              ...address,
+              state: address.state || '',
+              country: address.country || '',
+              postalCode: address.postalCode || '',
+            },
+          });
+        } else {
+          await prisma.address.create({
+            data: {
+              ...address,
+              entityId: userId,
+              entityType: 'USER',
+              state: address.state || '',
+              country: address.country || '',
+              postalCode: address.postalCode || '',
+            },
+          });
+        }
+      }
+
+      return user;
     });
+
+    return updatedUser;
   }
+
+
+
 
   async deleteUserByRole(userId: string, currentUser: any) {
     const { sub: currentUserId, userType } = currentUser;

@@ -9,49 +9,51 @@ datasource db {
 }
 
 model address {
-  id          String   @id @default(uuid()) @db.Char(36)
-  addressLine1 String  @db.VarChar(200)
-  addressLine2 String? @db.VarChar(200)
-  landmark    String?  @db.VarChar(100)
-  city        String   @db.VarChar(50)
-  state       String   @db.VarChar(50)
-  country     String   @db.VarChar(50)
-  postalCode  String   @db.VarChar(20)
-  latitude    Float?
-  longitude   Float?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  entityId    String   @db.Char(36)
-  entityType  String   @db.VarChar(10) // 'USER' or 'LAB'
-  user        users?   @relation("UserAddress", fields: [entityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "address_user_fkey")
-  lab         labs?    @relation("LabAddress", fields: [entityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "address_lab_fkey")
+  id             String   @id @default(uuid()) @db.Char(36)
+  addressLine1   String   @db.VarChar(200)
+  addressLine2   String?  @db.VarChar(200)
+  landmark       String?  @db.VarChar(100)
+  city           String   @db.VarChar(50)
+  state          String   @db.VarChar(50)
+  country        String   @db.VarChar(50)
+  postalCode     String   @db.VarChar(20)
+  latitude       Float?
+  longitude      Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  entityId       String   @db.Char(36)
+  entityType     String   @db.VarChar(10) // 'USER' or 'LAB'
+  user           users?   @relation("UserAddress", fields: [entityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "address_user_fkey")
+  lab            labs?    @relation("LabAddress", fields: [entityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "address_lab_fkey")
 
   @@index([entityId])
   @@map("address")
 }
 
 model users {
-  id          String   @id @default(uuid()) @db.Char(36)
-  name        String   @db.VarChar(100)
-  email       String   @unique @db.VarChar(100)
-  password    String   @db.VarChar(100)
-  userType    Int      @default(4)
-  isDeleted   Boolean  @default(false)
-  isEmailVerified Boolean @default(false)
+  id             String        @id @default(uuid()) @db.Char(36)
+  name           String        @db.VarChar(100)
+  email          String        @unique @db.VarChar(100)
+  password       String        @db.VarChar(100)
+  userType       Int           @default(4)
+  isDeleted      Boolean       @default(false)
+  isEmailVerified Boolean      @default(false)
   emailVerificationToken String? @db.VarChar(100)
   emailVerificationTokenExpiry DateTime?
-  resetToken  String?  @db.VarChar(100)
+  resetToken     String?       @db.VarChar(100)
   resetTokenExpiry DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdBy   String?  @db.Char(36)
-  managedBy   String?  @db.Char(36)
-  addresses   address[] @relation("UserAddress")
-  createdUsers users[] @relation("CreatedUsers")
-  managedUsers users[] @relation("ManagedUsers")
-  createdByUser users? @relation("CreatedUsers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  managedByUser users? @relation("ManagedUsers", fields: [managedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  managedLabs LabManagers[] @relation("UserLabs")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  createdBy      String?       @db.Char(36)
+  managedBy      String?       @db.Char(36)
+
+  addresses      address[]     @relation("UserAddress")
+  createdUsers   users[]       @relation("CreatedUsers")
+  managedUsers   users[]       @relation("ManagedUsers")
+  createdByUser  users?        @relation("CreatedUsers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  managedByUser  users?        @relation("ManagedUsers", fields: [managedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  managedLabs    LabManagers[] @relation("UserLabs")
+  tests          tests[]      
 
   @@index([createdBy])
   @@index([managedBy])
@@ -59,25 +61,31 @@ model users {
 }
 
 model labs {
-  id          String   @id @default(uuid()) @db.Char(36)
-  name        String   @db.VarChar(100)
-  phoneNumber String   @db.VarChar(20)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  addresses   address[] @relation("LabAddress")
-  managers    LabManagers[] @relation("LabManagers")
+  id         String        @id @default(uuid()) @db.Char(36)
+  email      String        @unique @db.VarChar(100)
+  name       String        @db.VarChar(100)
+  phoneNumber String       @db.VarChar(20)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  isDeleted  Boolean       @default(false)
+
+  addresses  address[]     @relation("LabAddress")
+  managers   LabManagers[] @relation("LabManagers")
+  labTests   lab_tests[]  
+  tests      tests[]       @relation("LabTests") 
 
   @@map("labs")
 }
 
 model LabManagers {
-  id        String  @id @default(uuid()) @db.Char(36)
-  userId    String  @db.Char(36)
-  labId     String  @db.Char(36)
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @db.Char(36)
+  labId     String   @db.Char(36)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      users   @relation("UserLabs", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  lab       labs    @relation("LabManagers", fields: [labId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  user      users    @relation("UserLabs", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lab       labs     @relation("LabManagers", fields: [labId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([userId])
   @@index([labId])
@@ -85,4 +93,65 @@ model LabManagers {
   @@map("lab_managers")
 }
 
+model test_catalog {
+  id           String        @id @default(uuid()) @db.Char(36)
+  testName     String        @unique @db.VarChar(100)
+  description  String?       @db.VarChar(255)
+  price        Float
+  isDeleted    Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
+  testDetails  test_detail[]
+  labs         lab_tests[]
+
+  @@map("test_catalog")
+}
+
+model lab_tests {
+  id         String        @id @default(uuid()) @db.Char(36)
+  labId      String        @db.Char(36)
+  catalogId  String        @db.Char(36)
+  price      Float
+  isDeleted  Boolean       @default(false)
+
+  lab        labs          @relation(fields: [labId], references: [id])
+  catalog    test_catalog  @relation(fields: [catalogId], references: [id])
+
+  @@unique([labId, catalogId])
+  @@map("lab_tests")
+}
+
+model tests {
+  id          String        @id @default(uuid()) @db.Char(36)
+  userId      String        @db.Char(36)
+  labId       String        @db.Char(36)
+  bookingDate DateTime      @default(now())
+  status      String        @default("PENDING") @db.VarChar(20)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        users         @relation(fields: [userId], references: [id])
+  lab         labs          @relation("LabTests", fields: [labId], references: [id])
+  details     test_detail[] // One-to-many
+
+  @@index([userId])
+  @@index([labId])
+  @@map("tests")
+}
+
+model test_detail {
+  id           String        @id @default(uuid()) @db.Char(36)
+  testId       String        @db.Char(36)
+  catalogId    String        @db.Char(36)
+  remark       String?       @db.VarChar(200)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  test         tests         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  testCatalog  test_catalog  @relation(fields: [catalogId], references: [id])
+
+  @@index([testId])
+  @@index([catalogId])
+  @@map("test_details")
+}

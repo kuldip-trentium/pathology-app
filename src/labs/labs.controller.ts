@@ -20,7 +20,7 @@ import { CreateLabDto } from './dto/create-lab.dto';
 import { UpdateLabDto } from './dto/update-lab.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Request } from 'express';
-import { UserType } from '../auth/decorators/roles.decorator';
+import { Roles, UserType } from 'src/auth/decorators/roles.decorator';
 
 interface RequestWithUser extends Request {
   user: {
@@ -35,9 +35,10 @@ interface RequestWithUser extends Request {
 export class LabsController {
   private readonly logger = new Logger(LabsController.name);
 
-  constructor(private readonly labsService: LabsService) {}
+  constructor(private readonly labsService: LabsService) { }
 
   @Post()
+  @Roles(UserType.ADMIN)
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async create(
     @Body() createLabDto: CreateLabDto,
