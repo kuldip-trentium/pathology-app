@@ -15,6 +15,7 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { OpenCageService } from 'src/address/open-cage.service';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 interface CurrentUser {
   id: string;
@@ -447,34 +448,18 @@ export class UserService {
       'You do not have permission to delete this user',
     );
   }
-  async getManagersWithStaff() {
-    return this.prisma.users.findMany({
-      where: {
-        userType: UserType.MANAGER,
-        isDeleted: false,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        userType: true,
-        addresses: {
-          select: {
-            addressLine1: true,
-            addressLine2: true,
-            landmark: true,
-            city: true,
-            state: true,
-            country: true,
-            postalCode: true,
-            latitude: true,
-            longitude: true,
-          },
-        },
-        managedUsers: {
+  async getManagersWithStaff(paginationDto: PaginationDto) {
+    try {
+      const { page = 1, limit = 10 } = paginationDto;
+      const skip = (page - 1) * limit;
+
+      const [users, total] = await Promise.all([
+        this.prisma.users.findMany({
           where: {
-            userType: UserType.STAFF,
             isDeleted: false,
+            userType: {
+              in: [UserType.MANAGER, UserType.STAFF],
+            },
           },
           select: {
             id: true,
@@ -482,53 +467,115 @@ export class UserService {
             email: true,
             userType: true,
             createdAt: true,
-            addresses: {
-              select: {
-                addressLine1: true,
-                addressLine2: true,
-                landmark: true,
-                city: true,
-                state: true,
-                country: true,
-                postalCode: true,
-                latitude: true,
-                longitude: true,
-              },
+            updatedAt: true,
+            createdBy: true,
+            managedBy: true,
+          },
+          skip,
+          take: limit,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        this.prisma.users.count({
+          where: {
+            isDeleted: false,
+            userType: {
+              in: [UserType.MANAGER, UserType.STAFF],
             },
           },
+        }),
+      ]);
+
+      // Get lab information for managers
+      const managersWithLabs = await Promise.all(
+        users.map(async (user) => {
+          if (user.userType === UserType.MANAGER) {
+            const labManager = await this.prisma.labManagers.findFirst({
+              where: { userId: user.id },
+              select: {
+                lab: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            });
+            return {
+              ...user,
+              lab: labManager?.lab || null,
+            };
+          }
+          return user;
+        }),
+      );
+
+      return {
+        data: managersWithLabs,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
         },
-      },
-    });
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching managers with staff: ${error.message}`, error.stack);
+      throw new BadRequestException('Failed to fetch managers with staff');
+    }
   }
 
-  async getStaffByManager(managerId: string) {
-    return this.prisma.users.findMany({
-      where: {
-        managedBy: managerId,
-        userType: UserType.STAFF,
-        isDeleted: false,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        userType: true,
-        createdAt: true,
-        addresses: {
-          select: {
-            addressLine1: true,
-            addressLine2: true,
-            landmark: true,
-            city: true,
-            state: true,
-            country: true,
-            postalCode: true,
-            latitude: true,
-            longitude: true,
+  async getStaffByManager(managerId: string, paginationDto: PaginationDto) {
+    try {
+      const { page = 1, limit = 10 } = paginationDto;
+      const skip = (page - 1) * limit;
+
+      const [staff, total] = await Promise.all([
+        this.prisma.users.findMany({
+          where: {
+            managedBy: managerId,
+            isDeleted: false,
+            userType: UserType.STAFF,
           },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            userType: true,
+            createdAt: true,
+            updatedAt: true,
+            createdBy: true,
+            managedBy: true,
+          },
+          skip,
+          take: limit,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        this.prisma.users.count({
+          where: {
+            managedBy: managerId,
+            isDeleted: false,
+            userType: UserType.STAFF,
+          },
+        }),
+      ]);
+
+      return {
+        data: staff,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
         },
-      },
-    });
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching staff by manager: ${error.message}`, error.stack);
+      throw new BadRequestException('Failed to fetch staff by manager');
+    }
   }
 
   async findOneByAccessControl(

@@ -6,6 +6,7 @@ import { UpdateLabDto } from './dto/update-lab.dto';
 import { OpenCageService } from '../address/open-cage.service';
 import { CreateAddressDto } from '../address/dto/create-address.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class LabsService {
@@ -188,16 +189,48 @@ export class LabsService {
         };
     }
 
-    async findAll(currentUser: any) {
-        const labs = await this.prisma.labs.findMany({
-            where: { isDeleted: false },
-            include: {
-                addresses: true,
-                managers: true
-            }
-        });
+    async findAll(currentUser: any, paginationDto: PaginationDto) {
+        const { page = 1, limit = 10 } = paginationDto;
+        const skip = (page - 1) * limit;
 
-        return labs;
+        const [labs, total] = await Promise.all([
+            this.prisma.labs.findMany({
+                where: { isDeleted: false },
+                include: {
+                    addresses: true,
+                    managers: {
+                        include: {
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                    userType: true,
+                                }
+                            }
+                        }
+                    }
+                },
+                skip,
+                take: limit,
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            }),
+            this.prisma.labs.count({
+                where: { isDeleted: false }
+            })
+        ]);
+
+        return {
+            data: labs,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     async findOne(id: string, currentUser: any) {

@@ -9,6 +9,7 @@ import { UserModule } from './user/user.module';
 import { AddressModule } from './address/address.module';
 import { TestCatalogModule } from './test-catalog/test-catalog.module';
 import { LabTestsModule } from './lab-tests/lab-tests.module';
+import { TestsModule } from './tests/tests.module';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { LabTestsModule } from './lab-tests/lab-tests.module';
     UserModule,
     AddressModule,
     TestCatalogModule,
-    LabTestsModule
+    LabTestsModule,
+    TestsModule
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Logger, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Logger, HttpException, HttpStatus, BadRequestException, Query } from '@nestjs/common';
 import { LabTestsService } from './lab-tests.service';
 import { CreateLabTestDto } from './dto/create-lab-test.dto';
 import { UpdateLabTestDto } from './dto/update-lab-test.dto';
@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RoleGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserType } from '../auth/decorators/roles.decorator';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('lab-tests')
 @UseGuards(JwtAuthGuard, RoleGuard)
@@ -33,9 +34,9 @@ export class LabTestsController {
     }
 
     @Get()
-    async findAll() {
+    async findAll(@Query() paginationDto: PaginationDto) {
         try {
-            return await this.labTestsService.findAll();
+            return await this.labTestsService.findAll(paginationDto);
         } catch (error) {
             this.logger.error(`Error fetching lab tests: ${error.message}`);
             throw new HttpException(

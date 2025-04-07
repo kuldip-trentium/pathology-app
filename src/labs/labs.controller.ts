@@ -14,6 +14,7 @@ import {
   HttpStatus,
   Logger,
   NotFoundException,
+  Query,
 } from '@nestjs/common';
 import { LabsService } from './labs.service';
 import { CreateLabDto } from './dto/create-lab.dto';
@@ -21,6 +22,7 @@ import { UpdateLabDto } from './dto/update-lab.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Request } from 'express';
 import { Roles, UserType } from 'src/auth/decorators/roles.decorator';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 interface RequestWithUser extends Request {
   user: {
@@ -62,12 +64,12 @@ export class LabsController {
   }
 
   @Get()
-  async findAll(@Req() req: RequestWithUser) {
+  async findAll(@Req() req: RequestWithUser, @Query() paginationDto: PaginationDto) {
     try {
       return await this.labsService.findAll({
         id: req.user.sub,
         userType: req.user.userType,
-      });
+      }, paginationDto);
     } catch (error) {
       this.logger.error(`Find all labs error: ${error.message}`, error.stack);
       if (error instanceof HttpException) {

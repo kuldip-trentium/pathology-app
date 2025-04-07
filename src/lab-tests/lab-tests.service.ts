@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLabTestDto } from './dto/create-lab-test.dto';
 import { UpdateLabTestDto } from './dto/update-lab-test.dto';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 @Injectable()
 export class LabTestsService {
@@ -56,24 +57,45 @@ export class LabTestsService {
 
     }
 
-    async findAll() {
+    async findAll(paginationDto: PaginationDto) {
         try {
-            return await this.prisma.$transaction(async (tx) => {
-                return await tx.lab_tests.findMany({
+            const { page = 1, limit = 10 } = paginationDto;
+            const skip = (page - 1) * limit;
+
+            const [tests, total] = await this.prisma.$transaction([
+                this.prisma.lab_tests.findMany({
                     where: {
                         isDeleted: false,
                     },
+                    skip,
+                    take: limit,
                     include: {
                         lab: true,
                         catalog: true,
                     },
-                });
-            });
+                }),
+                this.prisma.lab_tests.count({
+                    where: {
+                        isDeleted: false,
+                    },
+                }),
+            ]);
+
+            return {
+                data: tests,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit),
+                },
+            };
         } catch (error) {
             this.logger.error(`Error fetching lab tests: ${error.message}`);
             throw error;
         }
     }
+
 
     async findOne(id: string) {
         try {

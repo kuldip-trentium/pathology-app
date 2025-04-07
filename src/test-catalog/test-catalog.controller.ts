@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Logger, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Logger, HttpException, HttpStatus, BadRequestException, Query } from '@nestjs/common';
 import { TestCatalogService } from './test-catalog.service';
 import { CreateTestCatalogDto } from './dto/create-test-catalog.dto';
 import { UpdateTestCatalogDto } from './dto/update-test-catalog.dto';
@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RoleGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserType } from '../auth/decorators/roles.decorator';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('test-catalog')
 @UseGuards(JwtAuthGuard, RoleGuard)
@@ -34,9 +35,9 @@ export class TestCatalogController {
 
     @Get()
     @Roles(UserType.ADMIN, UserType.MANAGER, UserType.CLIENT, UserType.STAFF)
-    async findAll() {
+    async findAll(@Query() paginationDto: PaginationDto) {
         try {
-            return await this.testCatalogService.findAll();
+            return await this.testCatalogService.findAll(paginationDto);
         } catch (error) {
             this.logger.error(`Error fetching test catalogs: ${error.message}`);
             throw new HttpException(

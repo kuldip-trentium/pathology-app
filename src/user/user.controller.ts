@@ -19,6 +19,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -29,6 +30,7 @@ import * as crypto from 'crypto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RoleGuard)
@@ -39,7 +41,7 @@ export class UserController {
     private readonly userService: UserService,
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -74,16 +76,16 @@ export class UserController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @Roles(UserType.ADMIN, UserType.MANAGER)
-  async findAll(@Req() req) {
+  async findAll(@Req() req, @Query() paginationDto: PaginationDto) {
     try {
       this.logger.debug('Fetching users');
 
       const { sub: userId, userType } = req.user;
 
       if (userType === UserType.ADMIN) {
-        return await this.userService.getManagersWithStaff();
+        return await this.userService.getManagersWithStaff(paginationDto);
       } else if (userType === UserType.MANAGER) {
-        return await this.userService.getStaffByManager(userId);
+        return await this.userService.getStaffByManager(userId, paginationDto);
       } else {
         throw new ForbiddenException('Unauthorized access');
       }

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTestCatalogDto } from './dto/create-test-catalog.dto';
 import { UpdateTestCatalogDto } from './dto/update-test-catalog.dto';
 import { Prisma } from '@prisma/client';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class TestCatalogService {
@@ -31,17 +32,42 @@ export class TestCatalogService {
         });
     }
 
-
-
-    async findAll() {
+    async findAll(paginationDto: PaginationDto) {
         try {
-            return await this.prisma.$transaction(async (tx) => {
-                return await tx.test_catalog.findMany({
-                    where: {
-                        isDeleted: false,
-                    },
-                });
-            });
+            const { page = 1, limit = 10 } = paginationDto;
+            const skip = (page - 1) * limit;
+
+            const [tests, total] = await Promise.all([
+                this.prisma.$transaction(async (tx) => {
+                    return await tx.test_catalog.findMany({
+                        where: {
+                            isDeleted: false,
+                        },
+                        skip,
+                        take: limit,
+                        orderBy: {
+                            createdAt: 'desc',
+                        },
+                    });
+                }),
+                this.prisma.$transaction(async (tx) => {
+                    return await tx.test_catalog.count({
+                        where: {
+                            isDeleted: false,
+                        },
+                    });
+                }),
+            ]);
+
+            return {
+                data: tests,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit),
+                },
+            };
         } catch (error) {
             this.logger.error(`Error fetching test catalogs: ${error.message}`);
             throw error;
